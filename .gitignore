@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+.n8n/
+node_modules/
+.DS_Store

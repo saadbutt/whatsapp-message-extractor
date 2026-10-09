@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["is_job_post", "post_type"],
+  "properties": {
+    "is_job_post": { "type": "boolean" },
+    "post_type": { "enum": ["casting", "crew", "equipment", "venue", "other"] },
+    "role": { "type": ["string", "null"] },
+    "production_type": { "enum": ["film", "tv", "advert", "event", "music_video", null] },
+    "location_canonical": { "enum": ["dubai", "abu_dhabi", "sharjah", "ras_al_khaimah", "other_uae", "outside_uae", null] },
+    "location_raw": { "type": ["string", "null"] },
+    "pay_amount": { "type": ["number", "null"] },
+    "pay_currency": { "enum": ["AED", "USD", null] },
+    "pay_unit": { "enum": ["per_day", "per_hour", "per_project", null] },
+    "shoot_date_raw": { "type": ["string", "null"] },
+    "contact_raw": { "type": ["string", "null"] },
+    "language_detected": { "enum": ["en", "ar", "mixed", "arabizi"] },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+  }
+}

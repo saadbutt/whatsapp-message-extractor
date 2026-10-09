@@ -1,0 +1,228 @@
+{
+  "name": "WhatsApp job post extractor",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "when-clicking-execute",
+      "name": "When clicking Execute",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stands in for the WAHA webhook so the workflow runs with one click.\n// Swap this node for a Webhook trigger in production and nothing\n// downstream changes: the shape it emits is { id, text }.\n// Inlined rather than read from disk because the Code node sandbox\n// has no fs and no process.\nconst MESSAGES = [\n  {\n    \"id\": \"m01\",\n    \"text\": \"Casting call: male actor 25-35, Emirati, for a bank TVC. Shoot 12 Nov in Dubai. AED 2500/day. DM portfolio.\"\n  },\n  {\n    \"id\": \"m02\",\n    \"text\": \"مطلوب مصور فيديو لتصوير حدث في أبوظبي يوم 20 نوفمبر. الأجر 1800 درهم لليوم. للتواصل واتساب.\"\n  },\n  {\n    \"id\": \"m03\",\n    \"text\": \"Need gaffer + spark for 3 day shoot Sharjah, 2k/day each. Starts Sunday.\"\n  },\n  {\n    \"id\": \"m04\",\n    \"text\": \"Salam shabab, matloob makeup artist l film short fi Dubai, 1500 dirham el yom, el tasweer ba3d bokra\"\n  },\n  {\n    \"id\": \"m05\",\n    \"text\": \"Good morning everyone, hope you all had a nice weekend\"\n  },\n  {\n    \"id\": \"m06\",\n    \"text\": \"ARRI Alexa Mini available for rent this week, Dubai based. AED 1200 per day inc lenses.\"\n  },\n  {\n    \"id\": \"m07\",\n    \"text\": \"مطلوب ممثلات للمشاركة في مسلسل رمضاني، التصوير في دبي، الأجر يحدد حسب الدور\"\n  },\n  {\n    \"id\": \"m08\",\n    \"text\": \"Does anyone know a good shawarma place near Studio City\"\n  },\n  {\n    \"id\": \"m09\",\n    \"text\": \"Looking for a warehouse / venue for a 2 day brand event in RAK, mid December. Budget 15k total.\"\n  },\n  {\n    \"id\": \"m10\",\n    \"text\": \"URGENT: sound recordist needed tomorrow, Dubai Media City, 1800 AED. Call me.\"\n  },\n  {\n    \"id\": \"m11\",\n    \"text\": \"مطلوب سائق مع فان لنقل معدات التصوير من دبي الى الشارقة، 600 درهم\"\n  },\n  {\n    \"id\": \"m12\",\n    \"text\": \"Thanks everyone for yesterday, great shoot 🙏\"\n  },\n  {\n    \"id\": \"m13\",\n    \"text\": \"Casting kids 8-12 for a cereal advert, Dubai studio, 3 Dec. Parents must attend. AED 1000/day.\"\n  },\n  {\n    \"id\": \"m14\",\n    \"text\": \"matloob 2 PA's l shoot fi Abu Dhabi, 800/yom, 4 ayam\"\n  },\n  {\n    \"id\": \"m15\",\n    \"text\": \"للإيجار: كاميرا سوني FX6 مع عدسات، دبي، ٩٠٠ درهم في اليوم\"\n  }\n];\n\nreturn MESSAGES.map(m => ({ json: m }));\n"
+      },
+      "id": "load-messages",
+      "name": "Load messages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Normalise before anything reads the text.\n// Alef and ya variants, Arabic-Indic digits, diacritics and tatweel all make\n// the same word look like several different words to a matcher or a tokenizer.\nconst AR_DIGITS = { '٠':'0','١':'1','٢':'2','٣':'3','٤':'4',\n                    '٥':'5','٦':'6','٧':'7','٨':'8','٩':'9' };\n\nfunction normalise(text) {\n  return text\n    .replace(/[٠-٩]/g, d => AR_DIGITS[d])\n    .replace(/[أإآ]/g, 'ا')\n    .replace(/ى/g, 'ي')\n    .replace(/[ً-ْـ]/g, '')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nreturn items.map(item => {\n  const raw = item.json.text || '';\n  return { json: { ...item.json, raw_text: raw, text: normalise(raw) } };\n});\n"
+      },
+      "id": "normalise-arabic",
+      "name": "Normalise Arabic",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8111/v1/chat/completions",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: \"You extract structured data from WhatsApp messages posted in a UAE film and TV industry group. Messages may be English, Gulf Arabic, or Arabizi (Arabic typed in Latin letters and digits). Reply with one JSON object and nothing else. Use only these keys: is_job_post, post_type, role, production_type, location_canonical, location_raw, pay_amount, pay_currency, pay_unit, shoot_date_raw, contact_raw, language_detected, confidence. Any key not listed is rejected. Amounts: 2k means 2000. Never read an age range as a fee.\\n\\nMESSAGE:\\n\" + $json.text }] }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          }
+        },
+        "notes": "Point at your provider for real runs. For $env.LLM_URL instead, start n8n with N8N_BLOCK_ENV_ACCESS_IN_NODE=false."
+      },
+      "id": "extract-with-llm",
+      "name": "Extract with LLM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// The model's answer is a proposal, not a record.\n// Unknown keys are rejected rather than dropped: a model inventing a field has\n// misunderstood the contract, and silently discarding it hides the drift.\nconst ALLOWED = ['is_job_post','post_type','role','production_type',\n  'location_canonical','location_raw','pay_amount','pay_currency','pay_unit',\n  'shoot_date_raw','contact_raw','language_detected','confidence'];\nconst POST_TYPES = ['casting','crew','equipment','venue','other'];\n\n// The HTTP node replaces the item with the response, so the message id is\n// gone by here. Reach back to the node that still had it. This is the n8n\n// idiom for carrying context past an HTTP call.\nreturn items.map((item, i) => {\n  const id = $('Normalise Arabic').all()[i].json.id;\n  let parsed;\n  try {\n    parsed = JSON.parse(item.json.choices[0].message.content);\n  } catch (e) {\n    return { json: { id, valid: false, error: 'model did not return JSON' } };\n  }\n  const unknown = Object.keys(parsed).filter(k => !ALLOWED.includes(k));\n  if (unknown.length) {\n    return { json: { id, valid: false, error: 'unknown key(s): ' + unknown.join(', ') } };\n  }\n  if (typeof parsed.is_job_post !== 'boolean') {\n    return { json: { id, valid: false, error: 'is_job_post must be boolean' } };\n  }\n  if (!POST_TYPES.includes(parsed.post_type)) {\n    return { json: { id, valid: false, error: 'bad post_type: ' + parsed.post_type } };\n  }\n  if (parsed.pay_amount !== null && typeof parsed.pay_amount !== 'number') {\n    return { json: { id, valid: false, error: 'pay_amount must be a number or null' } };\n  }\n  return { json: { id, valid: true, raw_text: item.json.raw_text, ...parsed } };\n});\n"
+      },
+      "id": "validate-schema",
+      "name": "Validate schema",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.valid && $json.is_job_post }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-a-job-post?",
+      "name": "Is a job post?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8111/api/job-posts",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "retry": {
+            "retry": {
+              "maxTries": 3,
+              "waitBetweenTries": 2000
+            }
+          }
+        },
+        "notes": "Replace with the client's job posting form API."
+      },
+      "id": "submit-to-form-api",
+      "name": "Submit to form API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1220,
+        220
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "skip",
+      "name": "Skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1220,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "When clicking Execute": {
+      "main": [
+        [
+          {
+            "node": "Load messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load messages": {
+      "main": [
+        [
+          {
+            "node": "Normalise Arabic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalise Arabic": {
+      "main": [
+        [
+          {
+            "node": "Extract with LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract with LLM": {
+      "main": [
+        [
+          {
+            "node": "Validate schema",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate schema": {
+      "main": [
+        [
+          {
+            "node": "Is a job post?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is a job post?": {
+      "main": [
+        [
+          {
+            "node": "Submit to form API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "whatsappjobextract1"
+}
