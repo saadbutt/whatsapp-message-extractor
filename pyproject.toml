@@ -1,0 +1,11 @@
+[tool.ruff]
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "SIM", "RUF", "FURB"]
+
+[tool.ruff.lint.per-file-ignores]
+# This file normalises Arabic script on purpose -- it legitimately contains
+# Arabic letters that ruff's homoglyph check flags as "ambiguous" against
+# Latin lookalikes. That confusion is the normaliser's whole job, not a bug.
+"mocks/server.py" = ["RUF001"]

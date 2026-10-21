@@ -21,10 +21,14 @@ PROMPT = "MESSAGE:\n"
 
 
 def ask(text: str) -> dict:
+    payload = {
+        "model": "mock",
+        "temperature": 0,
+        "messages": [{"role": "user", "content": PROMPT + text}],
+    }
     request = urllib.request.Request(
         LLM,
-        data=json.dumps({"model": "mock", "temperature": 0,
-                         "messages": [{"role": "user", "content": PROMPT + text}]}).encode(),
+        data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"},
     )
     body = json.loads(urllib.request.urlopen(request, timeout=30).read())
@@ -32,7 +36,8 @@ def ask(text: str) -> dict:
 
 
 def main() -> int:
-    rows = [json.loads(l) for l in (ROOT / "samples" / "messages.jsonl").open(encoding="utf-8")]
+    sample_path = ROOT / "samples" / "messages.jsonl"
+    rows = [json.loads(line) for line in sample_path.open(encoding="utf-8")]
     server = subprocess.Popen([sys.executable, str(ROOT / "mocks" / "server.py")],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(2)
@@ -44,7 +49,8 @@ def main() -> int:
         print("-" * 62)
         for row in rows:
             got = ask(row["text"])
-            bad = {k: (v, got.get(k)) for k, v in row["expect"].items() if got.get(k) != v}
+            bad = {k: (v, got.get(k)) for k, v in row["expect"].items()
+                   if got.get(k) != v}
             for key, want in row["expect"].items():
                 field_total[key] = field_total.get(key, 0) + 1
                 field_hits[key] = field_hits.get(key, 0) + (got.get(key) == want)
