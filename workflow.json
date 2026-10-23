@@ -1,5 +1,6 @@
 {
   "name": "WhatsApp job post extractor",
+  "active": false,
   "nodes": [
     {
       "parameters": {},
