@@ -18,8 +18,40 @@ per field accuracy
   post_type             15/15  100%
   location_canonical    12/12  100%
   pay_amount            12/12  100%
+  pay_currency           9/9   100%
+  pay_unit               9/9   100%
   language_detected     12/12  100%
+  production_type        1/1   100%
 ```
+
+## Tech stack
+
+- **Workflow engine:** n8n, 8 nodes, self-contained
+- **Language:** Python 3.9+, standard library only — mocks and eval harness
+  both have zero dependencies
+- **CI:** GitHub Actions — ruff, and `eval.py` across Python 3.9 through 3.13,
+  gated on exact field match
+
+## Architecture
+
+```mermaid
+flowchart LR
+    WA["WhatsApp group\n(via WAHA)"] --> Norm["normalise\nalef/ya variants,\nArabic-Indic digits,\ndiacritics, tatweel"]
+    Norm --> Extract["LLM extract\ntemperature 0,\nclosed key list"]
+    Extract --> Validate["validate\nunknown keys rejected,\ntype-checked"]
+    Validate --> Route{"is job post?"}
+    Route -->|yes| Submit["submit to form API\nwith retry"]
+    Route -->|no| Skip["skip\n(chatter)"]
+```
+
+## Measurable results
+
+- **15/15 exact field match** on the goldset — `eval.py`, shown above
+- **12/15 submitted, 3 correctly skipped as chatter** — verified through the
+  real n8n engine, not just the Python harness (see
+  [Demo output](#demo-output))
+- **0 lint findings** — `ruff check .`
+- **CI matrix:** 3.9, 3.10, 3.11, 3.12, 3.13, all green
 
 ## Run it
 
@@ -35,6 +67,33 @@ Or open n8n in the browser, import `workflow.json`, and press Execute.
 
 For real runs, change two URLs in the workflow: the LLM node to your provider,
 the submit node to the real form API.
+
+## Demo output
+
+Run end to end against a real n8n install, not just `eval.py`'s own harness:
+
+```
+$ n8n import:workflow --input=workflow.json
+Successfully imported 1 workflow.
+
+$ n8n execute --id=whatsappjobextract1
+...finished: true
+
+$ curl -s localhost:8111/api/job-posts | python3 -c "import json,sys; print(json.load(sys.stdin)['count'])"
+12
+```
+
+12, matching the README's own claim exactly. Finding this out caught a real
+bug in `workflow.json`: current n8n (1.97.1) requires an explicit `"active"`
+key on import and rejects the file without one, which this workflow didn't
+have. Fixed by adding `"active": false`.
+
+The workflow's canvas is a real browser GUI, and unlike the health-check and
+curl-based demos in this project's sibling repos, there's no way to reach it
+headlessly: n8n gates its UI behind a mandatory first-run owner-account form
+that a static screenshot can't submit. Import and execute it yourself with
+the commands above, or open `http://localhost:5678` after `n8n start` to see
+the canvas directly.
 
 ## The pipeline
 
@@ -114,4 +173,3 @@ eval.py              the test report
 ## License
 
 MIT.
-# whatsapp-message-extractor
